@@ -31,3 +31,44 @@ class Conv2D(nn.Module):
         Y = Yp.transpose(1, 2).reshape(batch_size, self.out_channels, oh, ow)
         assert Y.size() == (batch_size, self.out_channels, oh, ow)
         return Y
+
+class Conv2DFunc(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, input, kernel, stride=1, padding=1):
+            b, c, h, w = input.size()
+            c_out, c_in, kh, kw = kernel.size()
+            assert c == c_in, f'expected {c_in} channels, got {c}'
+            ctx.save_for_backward(input, kernel)
+            ctx.stride = stride
+            ctx.padding = padding
+            oh = (h + 2 * padding - kh) // stride + 1
+            ow = (w + 2 * padding - kw) // stride + 1
+            W = kernel.reshape(c_out, -1).t()  # (k, c_out)
+            U = F.unfold(input, (kh, kw), padding=padding, stride=stride)  
+            Yp = U.transpose(1, 2) @ W                                           
+            output_batch = Yp.transpose(1, 2).reshape(b, c_out, oh, ow)         
+            return output_batch
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            input, kernel = ctx.saved_tensors
+            stride, padding = ctx.stride, ctx.padding
+            b, c, h, w = input.size()
+            c_out, c_in, kh, kw = kernel.size()
+
+            W = kernel.reshape(c_out, -1).t()                                    
+            U = F.unfold(input, (kh, kw), padding=padding, stride=stride)  # (b, k, p)
+            Yp_grad = grad_output.reshape(b, c_out, -1).transpose(1, 2)          # (b, p, c_out)
+            W_grad = torch.einsum('bkp,bpo->ko', U, Yp_grad)                     # (k, c_out)
+            kernel_grad = W_grad.t().reshape(c_out, c_in, kh, kw)
+            U_grad = (Yp_grad @ W.t()).transpose(1, 2)                           # (b, k, p)
+            input_batch_grad = F.fold(U_grad, output_size=(h, w), kernel_size=(kh, kw), padding=padding, stride=stride)            # (b, c, h, w)
+            return input_batch_grad, kernel_grad, None, None
+        
+torch.manual_seed(0)
+for s, p in [(1, 1), (2, 1), (2, 0)]:
+    x = torch.randn(2, 3, 7, 7, dtype=torch.double, requires_grad=True)
+    k = torch.randn(4, 3, 3, 3, dtype=torch.double, requires_grad=True)
+    print(s, p,
+          torch.allclose(Conv2DFunc.apply(x, k, s, p), F.conv2d(x, k, stride=s, padding=p)),
+          torch.autograd.gradcheck(lambda a, b: Conv2DFunc.apply(a, b, s, p), (x, k)))
