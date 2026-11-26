@@ -57,12 +57,12 @@ class Conv2DFunc(torch.autograd.Function):
             c_out, c_in, kh, kw = kernel.size()
 
             W = kernel.reshape(c_out, -1).t()                                    
-            U = F.unfold(input, (kh, kw), padding=padding, stride=stride)  # (b, k, p)
-            Yp_grad = grad_output.reshape(b, c_out, -1).transpose(1, 2)          # (b, p, c_out)
-            W_grad = torch.einsum('bkp,bpo->ko', U, Yp_grad)                     # (k, c_out)
+            U = F.unfold(input, (kh, kw), padding=padding, stride=stride)  
+            Yp_grad = grad_output.reshape(b, c_out, -1).transpose(1, 2)          
+            W_grad = torch.einsum('bkp,bpo->ko', U, Yp_grad)                     
             kernel_grad = W_grad.t().reshape(c_out, c_in, kh, kw)
-            U_grad = (Yp_grad @ W.t()).transpose(1, 2)                           # (b, k, p)
-            input_batch_grad = F.fold(U_grad, output_size=(h, w), kernel_size=(kh, kw), padding=padding, stride=stride)            # (b, c, h, w)
+            U_grad = (Yp_grad @ W.t()).transpose(1, 2)                           
+            input_batch_grad = F.fold(U_grad, output_size=(h, w), kernel_size=(kh, kw), padding=padding, stride=stride)            
             return input_batch_grad, kernel_grad, None, None
         
 torch.manual_seed(0)

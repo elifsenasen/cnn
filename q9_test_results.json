@@ -1,0 +1,12 @@
+{
+  "none": {
+    "epochs": 6,
+    "test_loss": 0.03414043951034546,
+    "test_acc": 0.9895
+  },
+  "translate": {
+    "epochs": 6,
+    "test_loss": 0.023854792189598083,
+    "test_acc": 0.9921
+  }
+}
